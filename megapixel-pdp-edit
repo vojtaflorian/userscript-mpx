@@ -6,8 +6,8 @@
 // @author       Vojta Florian
 // @include      *megapixel.*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=megapixel.cz
-// @downloadURL  https://megapixel.cz/data/script/Megapixel-pdp-edit.user.js
-// @updateURL    https://megapixel.cz/data/script/Megapixel-pdp-edit.user.js
+// @downloadURL  https://raw.githubusercontent.com/vojtaflorian/userscript-mpx/refs/heads/main/megapixel-pdp-edit
+// @updateURL    https://raw.githubusercontent.com/vojtaflorian/userscript-mpx/refs/heads/main/megapixel-pdp-edit
 // @grant        none
 // ==/UserScript==
 
