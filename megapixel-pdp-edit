@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Megapixel | PDP edit
 // @namespace    https://github.com/vojtaflorian
-// @version      2024-11-11
+// @version      2024-11-14
 // @description  Megapixel | PDP edit
 // @author       Vojta Florian
 // @include      *megapixel.cz/pdp/*
@@ -187,7 +187,7 @@
 
     }, 500);
 
-    //************************** ÚPRAVA STYLŮ A FORMÁTOVÁNÍ PDP SLEVOVÉ POUKAZY - KONTROLA DUPLIKOVANÝCH KODŮ***************************
+    //************************** SLEVOVÉ POUKAZY  - KONTROLA DUPLIKOVANÝCH KODŮ***************************
     function checkForDuplicateWords(elementId) {
         var inputElement = document.getElementById(elementId);
         if (inputElement) {
@@ -222,7 +222,49 @@
     checkForDuplicateWords('frm-editContentForm-invalidProducts');
     checkForDuplicateWords('frm-editContentForm-conditionalItems');
 
+//************************** SLEVOVÉ POUKAZY - POVOLENÉ VS ZAKÁZANÉ KÓDY  ***************************
+function checkNoValueInOtherElements() {
+    var validProductsInput = document.getElementById('frm-editContentForm-validProducts');
+    var invalidProductsInput = document.getElementById('frm-editContentForm-invalidProducts');
+    var conditionalItemsInput = document.getElementById('frm-editContentForm-conditionalItems');
 
+    if (validProductsInput && invalidProductsInput && conditionalItemsInput) {
+        var validProducts = validProductsInput.value.trim().split(/\s+/);
+        var invalidProducts = invalidProductsInput.value.trim().split(/\s+/);
+        var conditionalItems = conditionalItemsInput.value.trim().split(/\s+/);
+
+        // Kontrola, zda hodnota v validProducts se nachází v invalidProducts nebo conditionalItems
+        var duplicatesWithInvalid = validProducts.filter(val => invalidProducts.includes(val));
+        var duplicatesWithConditional = validProducts.filter(val => conditionalItems.includes(val));
+
+        // Pokud najdeme duplicity, zobrazíme varování
+        if (duplicatesWithInvalid.length > 0) {
+            alert('Varování: Hodnota ' + duplicatesWithInvalid.join(', ') + ' se nachází jak ve "Produkty" tak v "Zakázané produkty".');
+        }
+
+        if (duplicatesWithConditional.length > 0) {
+            alert('Varování: Hodnota ' + duplicatesWithConditional.join(', ') + ' se nachází jak ve "Produkty" tak v "Nutný produkt v košíku".');
+        }
+    }
+}
+
+// Kontrola při každém zadání vstupu do daných polí
+var validProductsInput = document.getElementById('frm-editContentForm-validProducts');
+var invalidProductsInput = document.getElementById('frm-editContentForm-invalidProducts');
+var conditionalItemsInput = document.getElementById('frm-editContentForm-conditionalItems');
+
+if (validProductsInput) {
+    validProductsInput.addEventListener('input', checkNoValueInOtherElements);
+}
+if (invalidProductsInput) {
+    invalidProductsInput.addEventListener('input', checkNoValueInOtherElements);
+}
+if (conditionalItemsInput) {
+    conditionalItemsInput.addEventListener('input', checkNoValueInOtherElements);
+}
+
+// Initial check
+checkNoValueInOtherElements();
     //**************************PARAMETRY***************************
 
     // Ověří, zda aktuální URL odpovídá požadovanému vzoru
