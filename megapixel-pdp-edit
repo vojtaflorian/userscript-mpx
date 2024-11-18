@@ -229,9 +229,10 @@ function checkNoValueInOtherElements() {
     var conditionalItemsInput = document.getElementById('frm-editContentForm-conditionalItems');
 
     if (validProductsInput && invalidProductsInput && conditionalItemsInput) {
-        var validProducts = validProductsInput.value.trim().split(/\s+/);
-        var invalidProducts = invalidProductsInput.value.trim().split(/\s+/);
-        var conditionalItems = conditionalItemsInput.value.trim().split(/\s+/);
+        // Rozdělení vstupů a odstranění prázdných řetězců
+        var validProducts = validProductsInput.value.trim().split(/\s+/).filter(val => val !== '');
+        var invalidProducts = invalidProductsInput.value.trim().split(/\s+/).filter(val => val !== '');
+        var conditionalItems = conditionalItemsInput.value.trim().split(/\s+/).filter(val => val !== '');
 
         // Kontrola, zda hodnota v validProducts se nachází v invalidProducts nebo conditionalItems
         var duplicatesWithInvalid = validProducts.filter(val => invalidProducts.includes(val));
