@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Megapixel | PDP edit
 // @namespace    https://github.com/vojtaflorian
-// @version      2024-11-14
+// @version      2025-05-09
 // @description  Megapixel | PDP edit
 // @author       Vojta Florian
 // @include      *megapixel.cz/pdp/*
@@ -188,39 +188,71 @@
     }, 500);
 
     //************************** SLEVOVÉ POUKAZY  - KONTROLA DUPLIKOVANÝCH KODŮ***************************
-    function checkForDuplicateWords(elementId) {
-        var inputElement = document.getElementById(elementId);
-        if (inputElement) {
-            inputElement.addEventListener('input', function () {
-                var text = inputElement.value.trim();
-                var words = text.split(/\s+/);
-                var wordCount = {};
-                var duplicates = [];
-
-                // Naplnění slovníku výskytů slov
-                words.forEach(function (word) {
-                    wordCount[word] = (wordCount[word] || 0) + 1;
-                });
-
-                // Nalezení duplicitních slov
-                for (var word in wordCount) {
-                    if (wordCount[word] > 1) {
-                        duplicates.push(word);
-                    }
+function checkForDuplicateWords(elementId) {
+    var inputElement = document.getElementById(elementId);
+    if (inputElement) {
+        // Najít wrapper element
+        var wrapperId = elementId + '-wrapper';
+        var wrapperElement = document.getElementById(wrapperId);
+        
+        if (wrapperElement) {
+            // Vytvořit nebo najít existující element počítadla
+            var counterId = elementId + '-counter';
+            var counterElement = document.getElementById(counterId);
+            
+            if (!counterElement) {
+                counterElement = document.createElement('span');
+                counterElement.id = counterId;
+                counterElement.style.marginLeft = '10px';
+                counterElement.style.color = '#666';
+                counterElement.style.fontWeight = 'bold';
+                
+                // Najít label a vložit počítadlo za něj
+                var label = wrapperElement.querySelector('label');
+                if (label) {
+                    label.insertAdjacentElement('afterend', counterElement);
                 }
-
-                // Pokud existují duplicity, zobrazí je ve varování
-                if (duplicates.length > 0) {
-                    alert('Varování: Nalezen duplicitní kód: ' + duplicates.join(', '));
-                }
-            });
+            }
         }
-    }
+        
+        // Funkce pro aktualizaci počítadla a kontrolu duplicit
+        function updateCounter() {
+            var text = inputElement.value.trim();
+            var words = text.split(/\s+/).filter(word => word.length > 0);
+            var count = words.length;
+            
+            // Aktualizovat text počítadla
+            var counterElement = document.getElementById(elementId + '-counter');
+            if (counterElement) {
+                counterElement.textContent = 'Počet: ' + count;
+            }
+            
+            // Kontrola duplicit (původní funkcionalita)
+            var wordCount = {};
+            var duplicates = [];
 
-    // Kontrola pro oba elementy
-    checkForDuplicateWords('frm-editContentForm-validProducts');
-    checkForDuplicateWords('frm-editContentForm-invalidProducts');
-    checkForDuplicateWords('frm-editContentForm-conditionalItems');
+            words.forEach(function(word) {
+                wordCount[word] = (wordCount[word] || 0) + 1;
+            });
+
+            for (var word in wordCount) {
+                if (wordCount[word] > 1) {
+                    duplicates.push(word);
+                }
+            }
+
+            if (duplicates.length > 0) {
+                alert('Varování: Nalezen duplicitní kód: ' + duplicates.join(', '));
+            }
+        }
+
+        // První aktualizace počítadla
+        updateCounter();
+        
+        // Přidat posluchač událostí pro změny vstupu
+        inputElement.addEventListener('input', updateCounter);
+    }
+}
 
 //************************** SLEVOVÉ POUKAZY - POVOLENÉ VS ZAKÁZANÉ KÓDY  ***************************
 function checkNoValueInOtherElements() {
