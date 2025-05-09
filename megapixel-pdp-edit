@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Megapixel | PDP edit
 // @namespace    https://github.com/vojtaflorian
-// @version      2025-05-09
+// @version      2025-05-09_2
 // @description  Megapixel | PDP edit
 // @author       Vojta Florian
 // @include      *megapixel.cz/pdp/*
@@ -189,69 +189,94 @@
 
     //************************** SLEVOVÉ POUKAZY  - KONTROLA DUPLIKOVANÝCH KODŮ***************************
 function checkForDuplicateWords(elementId) {
+    console.log('Megapixel | PDP edit: Inicializace počítadla pro element', elementId);
     var inputElement = document.getElementById(elementId);
-    if (inputElement) {
-        // Najít wrapper element
-        var wrapperId = elementId + '-wrapper';
-        var wrapperElement = document.getElementById(wrapperId);
-        
-        if (wrapperElement) {
-            // Vytvořit nebo najít existující element počítadla
-            var counterId = elementId + '-counter';
-            var counterElement = document.getElementById(counterId);
-            
-            if (!counterElement) {
-                counterElement = document.createElement('span');
-                counterElement.id = counterId;
-                counterElement.style.marginLeft = '10px';
-                counterElement.style.color = '#666';
-                counterElement.style.fontWeight = 'bold';
-                
-                // Najít label a vložit počítadlo za něj
-                var label = wrapperElement.querySelector('label');
-                if (label) {
-                    label.insertAdjacentElement('afterend', counterElement);
-                }
-            }
-        }
-        
-        // Funkce pro aktualizaci počítadla a kontrolu duplicit
-        function updateCounter() {
-            var text = inputElement.value.trim();
-            var words = text.split(/\s+/).filter(word => word.length > 0);
-            var count = words.length;
-            
-            // Aktualizovat text počítadla
-            var counterElement = document.getElementById(elementId + '-counter');
-            if (counterElement) {
-                counterElement.textContent = 'Počet: ' + count;
-            }
-            
-            // Kontrola duplicit (původní funkcionalita)
-            var wordCount = {};
-            var duplicates = [];
-
-            words.forEach(function(word) {
-                wordCount[word] = (wordCount[word] || 0) + 1;
-            });
-
-            for (var word in wordCount) {
-                if (wordCount[word] > 1) {
-                    duplicates.push(word);
-                }
-            }
-
-            if (duplicates.length > 0) {
-                alert('Varování: Nalezen duplicitní kód: ' + duplicates.join(', '));
-            }
-        }
-
-        // První aktualizace počítadla
-        updateCounter();
-        
-        // Přidat posluchač událostí pro změny vstupu
-        inputElement.addEventListener('input', updateCounter);
+    
+    if (!inputElement) {
+        console.error('Megapixel | PDP edit: Element s ID', elementId, 'nebyl nalezen');
+        return;
     }
+    
+    console.log('Megapixel | PDP edit: Element nalezen', inputElement);
+    
+    // Vytvořit a vložit počítadlo přímo za element
+    var counterId = elementId + '-counter';
+    var existingCounter = document.getElementById(counterId);
+    
+    if (existingCounter) {
+        console.log('Megapixel | PDP edit: Počítadlo již existuje', existingCounter);
+    } else {
+        console.log('Megapixel | PDP edit: Vytvářím nové počítadlo');
+        var counterElement = document.createElement('div');
+        counterElement.id = counterId;
+        counterElement.style.marginTop = '5px';
+        counterElement.style.color = '#0066cc';
+        counterElement.style.fontWeight = 'bold';
+        counterElement.style.fontSize = '12px';
+        
+        // Vložit za textové pole
+        inputElement.parentNode.insertBefore(counterElement, inputElement.nextSibling);
+        console.log('Megapixel | PDP edit: Počítadlo vytvořeno a vloženo', counterElement);
+    }
+    
+    // Funkce pro aktualizaci počítadla
+    function updateCounter() {
+        console.log('Megapixel | PDP edit: Aktualizuji počítadlo pro', elementId);
+        var text = inputElement.value.trim();
+        var words = text.split(/\s+/).filter(word => word.length > 0);
+        var count = words.length;
+        
+        var counterElement = document.getElementById(counterId);
+        if (counterElement) {
+            counterElement.textContent = 'Počet položek: ' + count;
+            console.log('Megapixel | PDP edit: Počítadlo aktualizováno na', count);
+        } else {
+            console.error('Megapixel | PDP edit: Počítadlo nebylo nalezeno při aktualizaci');
+        }
+        
+        // Kontrola duplicit (původní funkcionalita)
+        var wordCount = {};
+        var duplicates = [];
+
+        words.forEach(function(word) {
+            wordCount[word] = (wordCount[word] || 0) + 1;
+        });
+
+        for (var word in wordCount) {
+            if (wordCount[word] > 1) {
+                duplicates.push(word);
+            }
+        }
+
+        if (duplicates.length > 0) {
+            console.warn('Megapixel | PDP edit: Nalezeny duplicity', duplicates);
+            alert('Varování: Nalezen duplicitní kód: ' + duplicates.join(', '));
+        }
+    }
+
+    // Přidat posluchač událostí pro změny vstupu
+    inputElement.addEventListener('input', updateCounter);
+    console.log('Megapixel | PDP edit: Přidán posluchač událostí input');
+    
+    // Ihned aktualizovat počítadlo
+    updateCounter();
+    console.log('Megapixel | PDP edit: Počáteční aktualizace provedena');
+}
+
+// Ujistíme se, že se funkce spustí až po načtení dokumentu
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Megapixel | PDP edit: DOMContentLoaded - inicializace počítadel');
+    checkForDuplicateWords('frm-editContentForm-validProducts');
+    checkForDuplicateWords('frm-editContentForm-invalidProducts');
+    checkForDuplicateWords('frm-editContentForm-conditionalItems');
+});
+
+// Pro případ, že už je dokument načtený, spustíme to i okamžitě
+if (document.readyState !== 'loading') {
+    console.log('Megapixel | PDP edit: Dokument již načten - inicializace počítadel');
+    checkForDuplicateWords('frm-editContentForm-validProducts');
+    checkForDuplicateWords('frm-editContentForm-invalidProducts');
+    checkForDuplicateWords('frm-editContentForm-conditionalItems');
 }
 
 //************************** SLEVOVÉ POUKAZY - POVOLENÉ VS ZAKÁZANÉ KÓDY  ***************************
