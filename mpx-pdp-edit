@@ -1,0 +1,979 @@
+// ==UserScript==
+// @name         Megapixel | PDP edit
+// @namespace    https://github.com/vojtaflorian
+// @version      2025-07-15_improved2
+// @description  Megapixel | PDP edit - improved version with better error handling
+// @author       Vojta Florian
+// @include      *megapixel.cz/pdp/*
+// @icon         https://www.google.com/s2/favicons?sz=64&domain=megapixel.cz
+// @downloadURL  https://raw.githubusercontent.com/vojtaflorian/userscript-mpx/refs/heads/main/mpx-pdp-edit
+// @updateURL    https://raw.githubusercontent.com/vojtaflorian/userscript-mpx/refs/heads/main/mpx-pdp-edit
+// @grant        none
+// ==/UserScript==
+
+(function () {
+    'use strict';
+    console.log("Megapixel | PDP edit: Aktuální URL: " + window.location.href);
+
+ 
+//************************** PŘIDÁNÍ POČTU ŠTÍTKŮ DO NAVIGACE ***************************
+
+/**
+ * Načte počet štítků ze záložky edit-tags a přidá ho do navigace
+ * Funguje pro jakékoli URL typu /pdp/section/edit-?/id
+ */
+async function addTagsCountToNavigation() {
+    console.log('Megapixel | PDP edit: Spouštím načítání počtu štítků');
+
+    try {
+        // Zkontrolovat, jestli jsme na správné stránce s edit-* URL
+        const currentUrl = window.location.href;
+        const pdpMatch = currentUrl.match(/\/pdp\/([^\/]+)\/edit-([^\/]+)\/(\d+)/);
+
+        if (!pdpMatch) {
+            console.log('Megapixel | PDP edit: Nejsme na stránce s edit-* URL');
+            return;
+        }
+
+        const [, section, editType, id] = pdpMatch;
+        console.log(`Megapixel | PDP edit: Detekována stránka - sekce: ${section}, typ: ${editType}, ID: ${id}`);
+
+        // Pokud už jsme na edit-tags stránce, není potřeba nic dělat
+        if (editType === 'tags') {
+            console.log('Megapixel | PDP edit: Jsme již na tags stránce');
+            return;
+        }
+
+        // Vytvoř URL pro tags stránku
+        const tagsUrl = `/pdp/${section}/edit-tags/${id}`;
+        console.log(`Megapixel | PDP edit: Načítám tags stránku: ${tagsUrl}`);
+
+        // Načti tags stránku
+        const response = await fetch(tagsUrl);
+        if (!response.ok) {
+            console.error(`Megapixel | PDP edit: Chyba při načítání tags stránky (${response.status}):`, response.statusText);
+            return;
+        }
+
+        const html = await response.text();
+        console.log('Megapixel | PDP edit: Tags stránka úspěšně načtena');
+
+        // Parse HTML a najdi počet štítků
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+
+        const pagination = doc.querySelector('#snippet-xTagGrid-pagination .text-muted');
+        if (!pagination) {
+            console.log('Megapixel | PDP edit: Element s počtem štítků nebyl nalezen');
+            return;
+        }
+
+        // Extrahuj počet z textu typu "Položky: 1 - 1 od 1"
+        const paginationText = pagination.textContent.trim();
+        console.log(`Megapixel | PDP edit: Nalezen text paginace: "${paginationText}"`);
+
+        // Zkus najít počet různými způsoby pro robustnost
+        let count = 0;
+
+        // Pokus 1: "od X"
+        let countMatch = paginationText.match(/od\s+(\d+)/i);
+        if (countMatch) {
+            count = parseInt(countMatch[1], 10);
+        } else {
+            // Pokus 2: "Položky: X - Y"
+            countMatch = paginationText.match(/Položky:\s*(\d+)\s*-\s*(\d+)/i);
+            if (countMatch) {
+                count = parseInt(countMatch[2], 10); // Použij druhé číslo jako celkový počet
+            } else {
+                // Pokus 3: Hledej jakékoli číslo na konci
+                countMatch = paginationText.match(/(\d+)(?:\s*\))?$/);
+                if (countMatch) {
+                    count = parseInt(countMatch[1], 10);
+                }
+            }
+        }
+
+        if (count === null || isNaN(count)) {
+            console.log('Megapixel | PDP edit: Nepodařilo se extrahovat počet štítků z textu');
+            return;
+        }
+
+        console.log(`Megapixel | PDP edit: Extrahován počet štítků: ${count}`);
+
+        // Najdi navigaci a aktualizuj štítky link
+        const tabsNav = safeQuerySelector('.tabs-nav');
+        if (!tabsNav) {
+            console.log('Megapixel | PDP edit: Element .tabs-nav nebyl nalezen');
+            return;
+        }
+
+        // Najdi link pro štítky - může být různě pojmenovaný
+        const tagsLink = tabsNav.querySelector(`a[href*="/edit-tags/${id}"]`) ||
+                        tabsNav.querySelector(`a[href*="edit-tags"]`);
+
+        if (!tagsLink) {
+            console.log('Megapixel | PDP edit: Link pro štítky nebyl nalezen');
+            return;
+        }
+
+        // Zkontroluj, jestli už tam není počet v závorce
+        let originalText = tagsLink.textContent.trim();
+        const hasCount = originalText.match(/\(\d+\)$/);
+
+        if (hasCount) {
+            // Už tam počet je, nahraď ho
+            originalText = originalText.replace(/\s*\(\d+\)$/, '');
+        }
+
+        // Aktualizuj text s novým počtem
+        tagsLink.textContent = `${originalText} (${count})`;
+
+        // Pokud je počet 0, nastav červenou barvu a tučné písmo
+        if (count === 0) {
+            tagsLink.style.color = 'red';
+            tagsLink.style.fontWeight = 'bold';
+            console.log(`Megapixel | PDP edit: Nastavena červená barva pro nulový počet štítků`);
+        } else {
+            // Reset stylů pokud není nulový počet
+            tagsLink.style.color = '';
+            tagsLink.style.fontWeight = '';
+        }
+
+        console.log(`Megapixel | PDP edit: Úspěšně přidán počet štítků do navigace: ${originalText} (${count})`);
+
+    } catch (error) {
+        console.error('Megapixel | PDP edit: Chyba při načítání počtu štítků:', error);
+    }
+}
+
+//************************** VLOŽENÍ ŠTÍTKŮ JAKO EMBEDDED ELEMENT ***************************
+
+/**
+ * Načte štítky ze záložky edit-tags a vloží je přímo do aktuální stránky
+ * Funguje pro jakékoli URL typu /pdp/section/edit-?/id
+ */
+async function addTagsEmbeddedElement() {
+    console.log('Megapixel | PDP edit: Spouštím vložení embedded štítků');
+
+    try {
+        // Zkontrolovat, jestli jsme na správné stránce s edit-* URL
+        const currentUrl = window.location.href;
+        const pdpMatch = currentUrl.match(/\/pdp\/([^\/]+)\/edit-([^\/]+)\/(\d+)/);
+
+        if (!pdpMatch) {
+            console.log('Megapixel | PDP edit: Nejsme na stránce s edit-* URL');
+            return;
+        }
+
+        const [, section, editType, id] = pdpMatch;
+        console.log(`Megapixel | PDP edit: Detekována stránka - sekce: ${section}, typ: ${editType}, ID: ${id}`);
+
+        // Pokud už jsme na edit-tags stránce, není potřeba nic dělat
+        if (editType === 'tags') {
+            console.log('Megapixel | PDP edit: Jsme již na tags stránce');
+            return;
+        }
+
+        // Najdi cílový element kam vložit štítky
+        const targetElement = document.getElementById('frm-editContentForm-content-wrapper');
+        if (!targetElement) {
+            console.log('Megapixel | PDP edit: Cílový element frm-editContentForm-content-wrapper nebyl nalezen');
+            return;
+        }
+
+        // Zkontroluj, jestli už tam embedded štítky nejsou
+        if (document.getElementById('embedded-tags-datagrid')) {
+            console.log('Megapixel | PDP edit: Embedded štítky již existují');
+            return;
+        }
+
+        // Vytvoř URL pro tags stránku
+        const tagsUrl = `/pdp/${section}/edit-tags/${id}`;
+        console.log(`Megapixel | PDP edit: Načítám tags stránku: ${tagsUrl}`);
+
+        // Načti tags stránku
+        const response = await fetch(tagsUrl);
+        if (!response.ok) {
+            console.error(`Megapixel | PDP edit: Chyba při načítání tags stránky (${response.status}):`, response.statusText);
+            return;
+        }
+
+        const html = await response.text();
+        console.log('Megapixel | PDP edit: Tags stránka úspěšně načtena');
+
+        // Parse HTML a najdi datagrid element
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+
+        const tagsDatagrid = doc.querySelector('.datagrid.datagrid-xTagGrid');
+        if (!tagsDatagrid) {
+            console.log('Megapixel | PDP edit: Datagrid element nebyl nalezen');
+            return;
+        }
+
+        // Klonuj datagrid
+        const clonedDatagrid = tagsDatagrid.cloneNode(true);
+        clonedDatagrid.id = 'embedded-tags-datagrid';
+
+        // NENAHRAZUJEME URL - necháváme původní edit-tags URL aby akce fungovaly
+        // Akce pro štítky musí běžet na edit-tags endpointu
+
+        // Vytvoř nadpis pro embedded štítky
+        const headerElement = document.createElement('p');
+        headerElement.id = 'embedded-tags-header';
+        headerElement.className = 'mceEditor__wrapper';
+        headerElement.setAttribute('name', 'div');
+        headerElement.innerHTML = '<label>Štítky</label><br>';
+
+        // Vložit nadpis a pak datagrid před cílový element
+        targetElement.parentNode.insertBefore(headerElement, targetElement);
+        targetElement.parentNode.insertBefore(clonedDatagrid, targetElement);
+
+        // Přidej event listener pro formuláře aby se po akci refreshly štítky
+        const formsInEmbedded = clonedDatagrid.querySelectorAll('form');
+        formsInEmbedded.forEach(form => {
+            addUniqueEventListener(form, 'submit', function() {
+                // Po krátkém zpoždění refresh embedded štítky
+                setTimeout(async () => {
+                    console.log('Megapixel | PDP edit: Auto-refresh po akci');
+                    const existingEmbedded = document.getElementById('embedded-tags-datagrid');
+                    if (existingEmbedded) {
+                        existingEmbedded.remove();
+                    }
+                    await addTagsEmbeddedElement();
+                }, 1500);
+            });
+        });
+
+        console.log('Megapixel | PDP edit: Embedded štítky úspěšně vloženy');
+
+        // Přidej počet do navigace (původní funkce)
+        await addTagsCountToNavigation();
+
+    } catch (error) {
+        console.error('Megapixel | PDP edit: Chyba při vkládání embedded štítků:', error);
+    }
+}
+
+/**
+ * Kombinovaná inicializační funkce
+ */
+function initializeTagsFeatures() {
+    // Malé zpoždění, aby se stránka stihla načíst
+    setTimeout(() => {
+        addTagsEmbeddedElement();
+    }, 1000);
+}
+
+// Spuštění funkce po načtení dokumentu
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeTagsFeatures);
+} else {
+    initializeTagsFeatures();
+}
+
+
+    //************************** UTILITY FUNCTIONS ***************************
+
+    /**
+     * Safe DOM query selector with error handling
+     * @param {string} selector - CSS selector
+     * @param {Element} parent - Parent element (default: document)
+     * @returns {Element|null} Found element or null
+     */
+    function safeQuerySelector(selector, parent = document) {
+        try {
+            return parent.querySelector(selector);
+        } catch (e) {
+            console.error('Megapixel | PDP edit: Chyba při querySelector:', e);
+            return null;
+        }
+    }
+
+    /**
+     * Safe DOM query selector all with error handling
+     * @param {string} selector - CSS selector
+     * @param {Element} parent - Parent element (default: document)
+     * @returns {NodeList|null} Found elements or null
+     */
+    function safeQuerySelectorAll(selector, parent = document) {
+        try {
+            return parent.querySelectorAll(selector);
+        } catch (e) {
+            console.error('Megapixel | PDP edit: Chyba při querySelectorAll:', e);
+            return null;
+        }
+    }
+
+    /**
+     * Add unique event listener (removes existing first)
+     * @param {Element} element - Target element
+     * @param {string} event - Event type
+     * @param {Function} handler - Event handler
+     */
+    function addUniqueEventListener(element, event, handler) {
+        if (!element || typeof handler !== 'function') {
+            console.warn('Megapixel | PDP edit: Neplatný element nebo handler pro event listener');
+            return;
+        }
+        element.removeEventListener(event, handler);
+        element.addEventListener(event, handler);
+    }
+
+    /**
+     * Wait for iframe to load with polling
+     * @param {Function} callback - Callback function to execute when iframe is ready
+     * @param {number} maxAttempts - Maximum number of attempts
+     * @param {number} attempt - Current attempt number
+     */
+    function waitForIframe(callback, maxAttempts = 20, attempt = 0) {
+        const iframe = safeQuerySelector('iframe');
+        if (iframe && iframe.contentDocument) {
+            try {
+                // Test if we can access iframe content
+                const testAccess = iframe.contentDocument.documentElement;
+                if (testAccess) {
+                    callback(iframe);
+                    return;
+                }
+            } catch (e) {
+                console.log('Megapixel | PDP edit: Nelze přistoupit k iframe obsahu, pokus:', attempt + 1);
+            }
+        }
+
+        if (attempt < maxAttempts) {
+            setTimeout(() => waitForIframe(callback, maxAttempts, attempt + 1), 250);
+        } else {
+            console.warn('Megapixel | PDP edit: Timeout při čekání na iframe');
+        }
+    }
+
+    /**
+     * Copy text to clipboard with fallback
+     * @param {string} text - Text to copy
+     * @returns {Promise} Promise resolving when copy is complete
+     */
+    function copyToClipboard(text) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            return navigator.clipboard.writeText(text).then(() => {
+                console.log('Megapixel | PDP edit: URL byla zkopírována do schránky: ' + text);
+            }).catch(err => {
+                console.error('Megapixel | PDP edit: Nepodařilo se zkopírovat URL do schránky', err);
+                return fallbackCopyToClipboard(text);
+            });
+        } else {
+            return fallbackCopyToClipboard(text);
+        }
+    }
+
+    /**
+     * Fallback copy method for older browsers
+     * @param {string} text - Text to copy
+     * @returns {Promise} Promise resolving when copy is complete
+     */
+    function fallbackCopyToClipboard(text) {
+        return new Promise((resolve, reject) => {
+            try {
+                const textArea = document.createElement('textarea');
+                textArea.value = text;
+                textArea.style.position = 'fixed';
+                textArea.style.left = '-999999px';
+                textArea.style.top = '-999999px';
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+
+                const successful = document.execCommand('copy');
+                document.body.removeChild(textArea);
+
+                if (successful) {
+                    console.log('Megapixel | PDP edit: URL zkopírována pomocí fallback metody: ' + text);
+                    resolve();
+                } else {
+                    reject(new Error('Fallback copy failed'));
+                }
+            } catch (err) {
+                reject(err);
+            }
+        });
+    }
+
+    //************************** ÚPRAVA STYLŮ A FORMÁTOVÁNÍ PDP ***************************
+    // Vytvoření nového style elementu a přidání více CSS pravidel
+    var style = document.createElement('style');
+    style.type = 'text/css';
+    style.innerHTML = `
+    .width-50 { width: 50% !important; }
+    .hidden {display: none;}
+    .max-width-90px { max-width: 90px; word-wrap: break-word; white-space: normal !important;}
+    .table-small { display: flex; overflow-x: auto;}
+
+.datagrid table th.col-action{text-align:center}.datagrid table td.col-action,.datagrid table th.col-action {white-space:nowrap;width:10px;padding-right:10px;}
+@supports (position:sticky) {
+
+		.datagrid table .col-action { position:sticky; right:0px; z-index:1; }
+		.datagrid table th.col-action { background:#cacaca; }
+		.datagrid table td.col-action { background:#d8d8d8; }
+		.datagrid table tr:nth-child(even) td.col-action { background:#e5e5e5; }
+
+		.datagrid table .col-action:before { position:absolute; top:0; left:-25px; bottom:-1px; width:25px; background:linear-gradient(to right, rgba(0,0,0,0), rgba(0,0,0,.2)); opacity:0; content:""; transition:opacity 300ms ease; transform:translateZ(0); pointer-events:none; }
+		.datagrid.is-stuck-col-action table .col-action:before { opacity:1; }
+
+	}
+    `;
+
+    try {
+        document.getElementsByTagName('head')[0].appendChild(style);
+        console.log('Megapixel | PDP edit: Vytvořené nové styly pro další aplikace');
+    } catch (e) {
+        console.error('Megapixel | PDP edit: Chyba při přidávání stylů:', e);
+    }
+
+    // Mapování ID na třídy
+    var idToClassMap = {
+        'snippet-ordersGrid-grid': 'table-small',
+        'snippet-orderEShopGrid-grid': 'table-small',
+        'snippet-codesGrid-grid': 'table-small',
+        'frm-orderEShopGrid-filter-filter-abraID':'max-width-90px',
+        'frm-orderEShopGrid-filter-filter-order_no':'max-width-90px',
+        'frm-orderEShopGrid-filter-filter-created-from':'max-width-90px',
+        'frm-orderEShopGrid-filter-filter-created-to':'max-width-90px'
+    };
+
+    Object.keys(idToClassMap).forEach(function(id) {
+        var element = document.getElementById(id);
+        var className = idToClassMap[id];
+        if (element) {
+            element.classList.add(className);
+            console.log('Megapixel | PDP edit: Přidána třída', className, 'k elementu', id);
+        }
+    });
+
+    var classToAddMap = {
+        'grid-q col-q-1': {className: 'width-50', url: 'https://www.megapixel.cz/pdp/page/edit-attached/'}, //stránky - připojený obsah, změna šířky input boxu
+        'col-id': {className: 'hidden', url: ''}, //sloupce pro tabulku objednavek
+        'col-order_no': {className: 'max-width-90px', url: ''},
+        'col-created': {className: 'max-width-90px', url: ''},
+        'col-abraID': {className: 'max-width-90px', url: ''},
+        'col-status': {className: 'max-width-90px', url: ''},
+        'col-affiliateUser': {className: 'hidden', url: ''}
+    };
+
+    Object.keys(classToAddMap).forEach(function(originalClass) {
+        var config = classToAddMap[originalClass];
+        // Pokud není zadána URL nebo aktuální URL obsahuje zadanou URL
+        if (!config.url || window.location.href.includes(config.url)) {
+            var elements = document.getElementsByClassName(originalClass);
+            for (var i = 0; i < elements.length; i++) {
+                elements[i].classList.add(config.className);
+            }
+        }
+    });
+
+    console.log('Megapixel | PDP edit: Přidány třídy k prvkům.');
+
+    //************************** KOPÍROVÁNÍ OBSAHU ELEMENTU ***************************
+
+    function copyElement() {
+        console.log('Megapixel | PDP edit: start kopírování');
+
+        try {
+            // Najděte vstupní pole s definovanými atributy
+            var saveInput = safeQuerySelector('input[type="submit"][name="save"][value="Uložit"].btn.btn-green');
+
+            if (saveInput) {
+                console.log('Megapixel | PDP edit: Vstupní prvek nalezen.');
+
+                // Získejte rodičovský <p> element
+                var originalElement = saveInput.closest('p');
+
+                if (originalElement) {
+                    console.log('Megapixel | PDP edit: Rodičovský <p> element nalezen.');
+
+                    // Najděte cílový formulář podle ID
+                    var targetForm = document.getElementById('frm-editContentForm');
+
+                    if (targetForm) {
+                        console.log('Megapixel | PDP edit: Cílový formulář nalezen.');
+
+                        // Zkopírujte původní <p> element
+                        var clonedElement = originalElement.cloneNode(true);
+
+                        // Vložte zkopírovaný prvek na začátek formuláře
+                        targetForm.insertBefore(clonedElement, targetForm.firstChild);
+
+                        console.log('Megapixel | PDP edit: Prvek byl úspěšně zkopírován.');
+                    } else {
+                        console.log('Megapixel | PDP edit: Cílový formulář nebyl nalezen.');
+                    }
+                } else {
+                    console.log('Megapixel | PDP edit: Rodičovský <p> element nebyl nalezen.');
+                }
+            } else {
+                console.log('Megapixel | PDP edit: Specifický vstupní prvek nebyl nalezen.');
+            }
+        } catch (e) {
+            console.error('Megapixel | PDP edit: Chyba při kopírování elementu:', e);
+        }
+    }
+
+    // Spustíme funkci copyElement ihned, pokud je dokument připraven, jinak počkáme na událost 'DOMContentLoaded'
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', copyElement);
+    } else {
+        copyElement();
+    }
+
+    //************************** NASTAVENÍ STYLŮ PRO WYSIWYG EDITORY ***************************
+
+    function setupWysiwygStyles(iframe) {
+        console.log('Megapixel | PDP edit: Nastavuji styly pro WYSIWYG editor');
+
+        try {
+            var iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+
+            // Zalogujeme všechny <link> elementy uvnitř iframe
+            var allLinks = safeQuerySelectorAll('link', iframeDoc);
+            if (allLinks) {
+                for (var i = 0; i < allLinks.length; i++) {
+                    console.log('Megapixel | PDP edit: CSS Link ' + i + ': ' + allLinks[i].outerHTML);
+                }
+
+                // Najdi wysiwyg.css
+                var wysiwygLink = Array.from(allLinks).find(link => link.href.includes('wysiwyg.css'));
+
+                if (wysiwygLink) {
+
+                    // Vytvoření elementu <link> pro externí styly
+                    var frontEndStyle = document.createElement('link');
+                    frontEndStyle.rel = 'stylesheet';
+                    frontEndStyle.type = 'text/css';
+                    frontEndStyle.href = '/styles/styles.css';
+                    frontEndStyle.media = 'screen';
+
+                    var fontStyle = document.createElement('link');
+                    fontStyle.rel = 'stylesheet';
+                    fontStyle.href = 'https://fonts.googleapis.com/css2?family=Merriweather:wght@400;700&family=Open+Sans:wght@300..800&display=swap';
+
+                    // Vložení nových stylů za wysiwygLink
+                    wysiwygLink.parentNode.insertBefore(frontEndStyle, wysiwygLink.nextSibling);
+                    wysiwygLink.parentNode.insertBefore(fontStyle, wysiwygLink.nextSibling);
+
+                    // Vytvoření a vložení inline stylu <style> s vnořeným CSS
+                    var inlineStyle = document.createElement('style');
+                    inlineStyle.type = 'text/css';
+                    inlineStyle.innerHTML = 'body {background-color:white !important;}';
+
+                    iframeDoc.head.appendChild(inlineStyle);
+
+                    console.log('Megapixel | PDP edit: Styly pro WYSIWYG úspěšně nastaveny');
+                } else {
+                    console.log('Megapixel | PDP edit: wysiwyg.css nebyl nalezen');
+                }
+            }
+        } catch (e) {
+            console.error('Megapixel | PDP edit: Chyba při nastavování WYSIWYG stylů:', e);
+        }
+    }
+
+    // Použití vylepšené funkce pro čekání na iframe
+    waitForIframe(setupWysiwygStyles);
+
+    //************************** SLEVOVÉ POUKAZY - KONTROLA DUPLIKOVANÝCH KODŮ***************************
+
+    // Global storage for event handlers to prevent duplicates
+    var eventHandlers = {};
+
+    function checkForDuplicateWords(elementId) {
+        console.log('Megapixel | PDP edit: Inicializace počítadla pro element', elementId);
+        var inputElement = document.getElementById(elementId);
+
+        if (!inputElement) {
+            console.error('Megapixel | PDP edit: Element s ID', elementId, 'nebyl nalezen');
+            return;
+        }
+
+        console.log('Megapixel | PDP edit: Element nalezen', inputElement);
+
+        // Vytvořit a vložit počítadlo přímo za element
+        var counterId = elementId + '-counter';
+        var existingCounter = document.getElementById(counterId);
+
+        if (existingCounter) {
+            console.log('Megapixel | PDP edit: Počítadlo již existuje', existingCounter);
+        } else {
+            console.log('Megapixel | PDP edit: Vytvářím nové počítadlo');
+            var counterElement = document.createElement('div');
+            counterElement.id = counterId;
+            counterElement.style.marginTop = '5px';
+            counterElement.style.color = '#0066cc';
+            counterElement.style.fontWeight = 'bold';
+            counterElement.style.fontSize = '12px';
+
+            // Vložit za textové pole
+            try {
+                inputElement.parentNode.insertBefore(counterElement, inputElement.nextSibling);
+                console.log('Megapixel | PDP edit: Počítadlo vytvořeno a vloženo', counterElement);
+            } catch (e) {
+                console.error('Megapixel | PDP edit: Chyba při vkládání počítadla:', e);
+                return;
+            }
+        }
+
+        // Funkce pro aktualizaci počítadla
+        function updateCounter() {
+            console.log('Megapixel | PDP edit: Aktualizuji počítadlo pro', elementId);
+            var text = inputElement.value.trim();
+            var words = text.split(/\s+/).filter(word => word.length > 0);
+            var count = words.length;
+
+            var counterElement = document.getElementById(counterId);
+            if (counterElement) {
+                counterElement.textContent = 'Počet položek: ' + count;
+                console.log('Megapixel | PDP edit: Počítadlo aktualizováno na', count);
+            } else {
+                console.error('Megapixel | PDP edit: Počítadlo nebylo nalezeno při aktualizaci');
+            }
+
+            // Kontrola duplicit (původní funkcionalita)
+            var wordCount = {};
+            var duplicates = [];
+
+            words.forEach(function(word) {
+                wordCount[word] = (wordCount[word] || 0) + 1;
+            });
+
+            for (var word in wordCount) {
+                if (wordCount[word] > 1) {
+                    duplicates.push(word);
+                }
+            }
+
+            if (duplicates.length > 0) {
+                console.warn('Megapixel | PDP edit: Nalezeny duplicity', duplicates);
+                alert('Varování: Nalezen duplicitní kód: ' + duplicates.join(', '));
+            }
+        }
+
+        // Store handler reference and add unique event listener
+        if (!eventHandlers[elementId]) {
+            eventHandlers[elementId] = updateCounter;
+        }
+        addUniqueEventListener(inputElement, 'input', eventHandlers[elementId]);
+        console.log('Megapixel | PDP edit: Přidán posluchač událostí input pro', elementId);
+
+        // Ihned aktualizovat počítadlo
+        updateCounter();
+        console.log('Megapixel | PDP edit: Počáteční aktualizace provedena pro', elementId);
+    }
+
+    // Funkce pro inicializaci všech počítadel
+    function initializeCounters() {
+        console.log('Megapixel | PDP edit: Inicializace všech počítadel');
+        checkForDuplicateWords('frm-editContentForm-validProducts');
+        checkForDuplicateWords('frm-editContentForm-invalidProducts');
+        checkForDuplicateWords('frm-editContentForm-conditionalItems');
+    }
+
+    // Ujistíme se, že se funkce spustí až po načtení dokumentu
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initializeCounters);
+    } else {
+        initializeCounters();
+    }
+
+    //************************** SLEVOVÉ POUKAZY - POVOLENÉ VS ZAKÁZANÉ KÓDY ***************************
+
+    function checkNoValueInOtherElements() {
+        try {
+            var validProductsInput = document.getElementById('frm-editContentForm-validProducts');
+            var invalidProductsInput = document.getElementById('frm-editContentForm-invalidProducts');
+            var conditionalItemsInput = document.getElementById('frm-editContentForm-conditionalItems');
+
+            if (validProductsInput && invalidProductsInput && conditionalItemsInput) {
+                // Rozdělení vstupů a odstranění prázdných řetězců
+                var validProducts = validProductsInput.value.trim().split(/\s+/).filter(val => val !== '');
+                var invalidProducts = invalidProductsInput.value.trim().split(/\s+/).filter(val => val !== '');
+                var conditionalItems = conditionalItemsInput.value.trim().split(/\s+/).filter(val => val !== '');
+
+                // Kontrola, zda hodnota v validProducts se nachází v invalidProducts nebo conditionalItems
+                var duplicatesWithInvalid = validProducts.filter(val => invalidProducts.includes(val));
+                var duplicatesWithConditional = validProducts.filter(val => conditionalItems.includes(val));
+
+                // Pokud najdeme duplicity, zobrazíme varování
+                if (duplicatesWithInvalid.length > 0) {
+                    alert('Varování: Hodnota ' + duplicatesWithInvalid.join(', ') + ' se nachází jak ve "Produkty" tak v "Zakázané produkty".');
+                }
+
+                if (duplicatesWithConditional.length > 0) {
+                    alert('Varování: Hodnota ' + duplicatesWithConditional.join(', ') + ' se nachází jak ve "Produkty" tak v "Nutný produkt v košíku".');
+                }
+            }
+        } catch (e) {
+            console.error('Megapixel | PDP edit: Chyba při kontrole hodnot:', e);
+        }
+    }
+
+    // Kontrola při každém zadání vstupu do daných polí - používáme unikátní event listenery
+    function initializeCrossValidation() {
+        var validProductsInput = document.getElementById('frm-editContentForm-validProducts');
+        var invalidProductsInput = document.getElementById('frm-editContentForm-invalidProducts');
+        var conditionalItemsInput = document.getElementById('frm-editContentForm-conditionalItems');
+
+        if (validProductsInput) {
+            addUniqueEventListener(validProductsInput, 'input', checkNoValueInOtherElements);
+        }
+        if (invalidProductsInput) {
+            addUniqueEventListener(invalidProductsInput, 'input', checkNoValueInOtherElements);
+        }
+        if (conditionalItemsInput) {
+            addUniqueEventListener(conditionalItemsInput, 'input', checkNoValueInOtherElements);
+        }
+
+        // Initial check
+        checkNoValueInOtherElements();
+    }
+
+    // Inicializace cross-validation
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initializeCrossValidation);
+    } else {
+        initializeCrossValidation();
+    }
+
+    //**************************PARAMETRY***************************
+
+    // Ověří, zda aktuální URL odpovídá požadovanému vzoru
+    if (/^https:\/\/www\.megapixel\.cz\/pdp\/product\/edit-parameters-multi\/?.*/.test(window.location.href)) {
+        console.log("Megapixel | PDP parameters edit: Start");
+
+        var runScript = confirm("Spustit skript? Ano/Ne");
+        if (!runScript) {
+            console.log("Megapixel | PDP parameters edit: Skript zrušen uživatelem.");
+        } else {
+            try {
+                console.log("Megapixel | PDP parameters edit: Skript spuštěn.");
+                var columnName = prompt("Zadejte název sloupce, který chcete editovat:", "Vyřazené parametry - NEVYPLŇOVAT!!!");
+                var textValue = prompt("Zadejte text pro výběr v sloupci '" + columnName + "':");
+
+                var table = safeQuerySelector('table.table-saving');
+                if (!table) {
+                    alert("Tabulka nebyla nalezena.");
+                    console.error("Megapixel | PDP parameters edit: Tabulka table.table-saving nebyla nalezena");
+                } else {
+                    var headersRow1 = safeQuerySelectorAll('thead tr.tr-dark th', table);
+                    var headersRow2 = safeQuerySelectorAll('thead tr:nth-child(2) th', table);
+
+                    if (!headersRow1) {
+                        alert("Hlavičky tabulky nebyly nalezeny.");
+                        console.error("Megapixel | PDP parameters edit: Hlavičky tabulky nebyly nalezeny");
+                    } else {
+                        var startIndex = -1;
+                        var colspan = 0;
+
+                        headersRow1.forEach(function(header, index) {
+                            if (header.textContent.trim() === columnName) {
+                                startIndex = index;
+                                colspan = header.colSpan;
+                            }
+                        });
+
+                        if (startIndex === -1 || colspan === 0) {
+                            console.log("Megapixel | PDP parameters edit: Sloupec '" + columnName + "' nenalezen.");
+                            alert("Sloupec '" + columnName + "' nebyl nalezen.");
+                        } else {
+                            console.log("Megapixel | PDP parameters edit: Editovaný sloupec: " + columnName + ", text pro výběr: " + textValue);
+
+                            var rows = safeQuerySelectorAll('tbody tr', table);
+
+                            if (!rows) {
+                                alert("Řádky tabulky nebyly nalezeny.");
+                                console.error("Megapixel | PDP parameters edit: Řádky tabulky nebyly nalezeny");
+                            } else {
+                                // Funkce pro zpracování labelů
+                                function processLabels(labels, textValue) {
+                                    var radioSet = false;
+
+                                    if (textValue === "") {
+                                        labels.forEach(function(label) {
+                                            // Předpokládáme, že "nezvoleno" je reprezentováno label s konkrétním textem
+                                            if (label.textContent.trim().toLowerCase() === "nezvoleno") {
+                                                var radioInput = label.querySelector('input[type="radio"]');
+                                                if (radioInput) {
+                                                    radioInput.checked = true;
+                                                    radioSet = true;
+                                                    console.log("Megapixel | PDP parameters edit: Nastavení 'nezvoleno' pro radio button.");
+                                                }
+                                            }
+                                        });
+                                    } else {
+                                        labels.forEach(function(label) {
+                                            if (label.textContent.trim() === textValue && !radioSet) {
+                                                var radioInput = label.querySelector('input[type="radio"]');
+                                                if (radioInput) {
+                                                    radioInput.checked = true;
+                                                    radioSet = true;
+                                                    console.log("Megapixel | PDP parameters edit: Nastavení radio buttonu pro řádek: " + label.textContent.trim());
+                                                }
+                                            }
+                                        });
+                                    }
+
+                                    if (!radioSet) {
+                                        console.log("Megapixel | PDP parameters edit: Nenalezen odpovídající radio button pro: " + (textValue === "" ? "nezvoleno" : textValue));
+                                    }
+                                }
+
+                                // Funkce pro zpracování options
+                                function processOptions(options, textValue) {
+                                    var optionFound = false;
+                                    // Pokud je textValue prázdný, nastavíme hodnotu na "nezvoleno"
+                                    if (textValue === "") {
+                                        options.forEach(function(option) {
+                                            if (option.value === "") { // Předpokládáme, že hodnota "nezvoleno" má prázdný value atribut
+                                                option.selected = true;
+                                                optionFound = true;
+                                                console.log("Megapixel | PDP parameters edit: Nastavení 'nezvoleno' pro výběr.");
+                                            }
+                                        });
+                                    } else {
+                                        options.forEach(function(option) {
+                                            if (option.textContent.trim() === textValue) {
+                                                option.selected = true;
+                                                optionFound = true;
+                                                console.log("Megapixel | PDP parameters edit: Nastavení výběrové hodnoty pro řádek: " + option.textContent.trim());
+                                            }
+                                        });
+                                    }
+                                    if (!optionFound) {
+                                        console.log("Megapixel | PDP parameters edit: Nenalezen odpovídající výběr pro: " + (textValue === "" ? "nezvoleno" : textValue));
+                                    }
+                                }
+
+                                // Funkce pro zpracování výběru z hodnot pro oba typy select elementů (s a bez multiple atributu)
+                                function processSelectOptions(select, textValues) {
+                                    // Pokud textValues je prázdný a select nemá atribut multiple, nastavíme "nezvoleno"
+                                    if (textValues === "" && !select.multiple) {
+                                        select.value = ""; // Předpokládáme, že hodnota "nezvoleno" má prázdný value atribut
+                                        console.log("Megapixel | PDP parameters edit: Nastavení 'nezvoleno' pro výběr.");
+                                        return; // Ukončíme funkci zde, protože další logika není potřeba
+                                    }
+
+                                    var valuesToSelect = textValues.split(", ").map(value => value.trim()); // Předpokládáme, že hodnoty jsou oddělené čárkou a mezerou
+                                    var options = safeQuerySelectorAll('option', select);
+                                    var optionFound = false;
+
+                                    if (options && select.multiple) {
+                                        // Logika pro select s atributem multiple
+                                        options.forEach(option => {
+                                            option.selected = valuesToSelect.includes(option.textContent.trim());
+                                            if (option.selected) {
+                                                optionFound = true;
+                                                console.log("Megapixel | PDP parameters edit: Vybráno pro multi-select: " + option.textContent.trim());
+                                            }
+                                        });
+                                    } else if (options) {
+                                        // Logika pro obyčejný select
+                                        options.forEach(option => {
+                                            if (valuesToSelect.includes(option.textContent.trim())) {
+                                                select.value = option.value;
+                                                optionFound = true;
+                                                console.log("Megapixel | PDP parameters edit: Nastavení výběrové hodnoty pro řádek: " + option.textContent.trim());
+                                            }
+                                        });
+                                    }
+
+                                    if (!optionFound && select.multiple && options) {
+                                        // V případě, že není nalezena odpovídající hodnota pro multiple select, zrušíme všechny výběry
+                                        Array.from(options).forEach(option => {
+                                            option.selected = false;
+                                        });
+                                        console.log("Megapixel | PDP parameters edit: Žádná odpovídající hodnota nenalezena, výběry zrušeny pro multi-select.");
+                                    } else if (!optionFound) {
+                                        console.log("Megapixel | PDP parameters edit: Nenalezen odpovídající výběr pro: " + textValues);
+                                    }
+                                }
+
+                                rows.forEach(function(row) {
+                                    var cells = safeQuerySelectorAll('td', row);
+
+                                    if (cells) {
+                                        for (var i = startIndex; i < startIndex + colspan; i++) {
+                                            if (cells.length > i) {
+                                                var cell = cells[i];
+                                                if (safeQuerySelector('input[type="radio"]', cell)) {
+                                                    var labels = safeQuerySelectorAll('label', cell);
+                                                    if (labels) {
+                                                        processLabels(labels, textValue);
+                                                    }
+                                                } else if (safeQuerySelector('input[type="text"]', cell)) {
+                                                    var textInput = safeQuerySelector('input[type="text"]', cell);
+                                                    if (textInput) {
+                                                        textInput.value = textValue;
+                                                        console.log("Megapixel | PDP parameters edit: Nastavení textové hodnoty pro řádek.");
+                                                    }
+                                                } else if (safeQuerySelector('select', cell)) {
+                                                    var select = safeQuerySelector('select', cell);
+                                                    if (select) {
+                                                        // Použití nové funkce pro zpracování <select> elementů
+                                                        processSelectOptions(select, textValue);
+                                                    }
+                                                } else {
+                                                    console.log("Megapixel | PDP parameters edit: Nebyl nalezen žádný odpovídající input.");
+                                                }
+                                            }
+                                        }
+                                    }
+                                });
+
+                                alert("Hodnoty ve sloupci '" + columnName + "' byly aktualizovány.");
+                            }
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error("Megapixel | PDP parameters edit: Chyba při zpracování parametrů:", e);
+                alert("Došlo k chybě při zpracování parametrů: " + e.message);
+            }
+        }
+    }
+
+    //************************** ODKAZ DO SEARCH CONSOLE***************************
+
+    try {
+        // Najít prvek, který obsahuje text "Odkaz na ostrý web"
+        const elements = document.evaluate("//p[contains(text(), 'Odkaz na ostrý web')]", document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+
+        for (let i = 0; i < elements.snapshotLength; i++) {
+            const element = elements.snapshotItem(i);
+
+            if (element) {
+                // Najít URL v prvku
+                const link = safeQuerySelector('a', element);
+                if (link) {
+                    const url = link.getAttribute('href');
+
+                    // Přidat tlačítko pro otevření Google Search Console a kopírování URL
+                    const button = document.createElement('button');
+                    button.innerText = 'Otevřít v Google Search Console';
+                    button.style.marginLeft = '10px'; // Přidání odsazení pro lepší vzhled
+                    button.onclick = function() {
+                        const fullUrl = 'https://www.megapixel.cz' + url;
+                        copyToClipboard(fullUrl).then(() => {
+                            window.open('https://search.google.com/search-console?resource_id=https://www.megapixel.cz/', '_blank');
+                        }).catch(err => {
+                            console.error('Megapixel | PDP edit: Chyba při kopírování URL:', err);
+                            // I přes chybu při kopírování otevřeme Search Console
+                            window.open('https://search.google.com/search-console?resource_id=https://www.megapixel.cz/', '_blank');
+                        });
+                    };
+                    element.appendChild(button);
+                    console.log('Megapixel | PDP edit: Přidáno tlačítko pro Search Console');
+                }
+            }
+        }
+    } catch (e) {
+        console.error('Megapixel | PDP edit: Chyba při vytváření Search Console tlačítka:', e);
+    }
+
+})();
