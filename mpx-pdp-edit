@@ -23,69 +23,70 @@
  * Funguje pro jakékoli URL typu /pdp/section/edit-?/id
  */
 async function addTagsCountToNavigation() {
-    console.log('Megapixel | PDP edit: Spouštím načítání počtu štítků');
+    console.log('Megapixel | PDP edit: Starting tags count loading');
 
     try {
-        // Zkontrolovat, jestli jsme na správné stránce s edit-* URL
+        // Check if we are on the correct page with edit-* URL
         const currentUrl = window.location.href;
+        // Updated regex to match any edit-* pattern
         const pdpMatch = currentUrl.match(/\/pdp\/([^\/]+)\/edit-([^\/]+)\/(\d+)/);
 
         if (!pdpMatch) {
-            console.log('Megapixel | PDP edit: Nejsme na stránce s edit-* URL');
+            console.log('Megapixel | PDP edit: Not on a page with edit-* URL');
             return;
         }
 
         const [, section, editType, id] = pdpMatch;
-        console.log(`Megapixel | PDP edit: Detekována stránka - sekce: ${section}, typ: ${editType}, ID: ${id}`);
+        console.log(`Megapixel | PDP edit: Detected page - section: ${section}, type: ${editType}, ID: ${id}`);
 
-        // Pokud už jsme na edit-tags stránce, není potřeba nic dělat
+        // If we are already on edit-tags page, no need to do anything
         if (editType === 'tags') {
-            console.log('Megapixel | PDP edit: Jsme již na tags stránce');
+            console.log('Megapixel | PDP edit: Already on tags page');
             return;
         }
 
-        // Vytvoř URL pro tags stránku
+        // Create URL for tags page
         const tagsUrl = `/pdp/${section}/edit-tags/${id}`;
-        console.log(`Megapixel | PDP edit: Načítám tags stránku: ${tagsUrl}`);
+        console.log(`Megapixel | PDP edit: Loading tags page: ${tagsUrl}`);
 
-        // Načti tags stránku
+        // Load tags page
         const response = await fetch(tagsUrl);
         if (!response.ok) {
-            console.error(`Megapixel | PDP edit: Chyba při načítání tags stránky (${response.status}):`, response.statusText);
+            console.error(`Megapixel | PDP edit: Error loading tags page (${response.status}):`, response.statusText);
             return;
         }
 
         const html = await response.text();
-        console.log('Megapixel | PDP edit: Tags stránka úspěšně načtena');
+        console.log('Megapixel | PDP edit: Tags page successfully loaded');
 
-        // Parse HTML a najdi počet štítků
+        // Parse HTML and find tags count
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, 'text/html');
 
         const pagination = doc.querySelector('#snippet-xTagGrid-pagination .text-muted');
         if (!pagination) {
-            console.log('Megapixel | PDP edit: Element s počtem štítků nebyl nalezen');
+            console.log('Megapixel | PDP edit: Element with tags count not found');
             return;
         }
 
-        // Extrahuj počet z textu typu "Položky: 1 - 1 od 1"
+        // Extract count from text like "Items: 1 - 1 of 1"
         const paginationText = pagination.textContent.trim();
-        console.log(`Megapixel | PDP edit: Nalezen text paginace: "${paginationText}"`);
+        console.log(`Megapixel | PDP edit: Found pagination text: "${paginationText}"`);
 
-        // Zkus najít počet různými způsoby pro robustnost
+        // Try to find count in various ways for robustness
         let count = 0;
 
-        // Pokus 1: "od X"
+        // Attempt 1: "od X" (from X)
         let countMatch = paginationText.match(/od\s+(\d+)/i);
         if (countMatch) {
             count = parseInt(countMatch[1], 10);
         } else {
-            // Pokus 2: "Položky: X - Y"
+            // Attempt 2: "Položky: X - Y" (Items: X - Y)
             countMatch = paginationText.match(/Položky:\s*(\d+)\s*-\s*(\d+)/i);
             if (countMatch) {
-                count = parseInt(countMatch[2], 10); // Použij druhé číslo jako celkový počet
+                count = parseInt(countMatch[2], 10); // Use second number as total count
             } else {
-                // Pokus 3: Hledej jakékoli číslo na konci
+                // Attempt 3: Look for any number at the end
                 countMatch = paginationText.match(/(\d+)(?:\s*\))?$/);
                 if (countMatch) {
                     count = parseInt(countMatch[1], 10);
@@ -94,58 +95,79 @@ async function addTagsCountToNavigation() {
         }
 
         if (count === null || isNaN(count)) {
-            console.log('Megapixel | PDP edit: Nepodařilo se extrahovat počet štítků z textu');
+            console.log('Megapixel | PDP edit: Failed to extract tags count from text');
             return;
         }
 
-        console.log(`Megapixel | PDP edit: Extrahován počet štítků: ${count}`);
+        console.log(`Megapixel | PDP edit: Extracted tags count: ${count}`);
 
-        // Najdi navigaci a aktualizuj štítky link
+        // Find navigation and update tags link
         const tabsNav = safeQuerySelector('.tabs-nav');
         if (!tabsNav) {
-            console.log('Megapixel | PDP edit: Element .tabs-nav nebyl nalezen');
+            console.log('Megapixel | PDP edit: Element .tabs-nav not found');
             return;
         }
 
-        // Najdi link pro štítky - může být různě pojmenovaný
+        // Find tags link - can be named differently
         const tagsLink = tabsNav.querySelector(`a[href*="/edit-tags/${id}"]`) ||
                         tabsNav.querySelector(`a[href*="edit-tags"]`);
 
         if (!tagsLink) {
-            console.log('Megapixel | PDP edit: Link pro štítky nebyl nalezen');
+            console.log('Megapixel | PDP edit: Tags link not found');
             return;
         }
 
-        // Zkontroluj, jestli už tam není počet v závorce
+        // Check if count is already there in parentheses
         let originalText = tagsLink.textContent.trim();
         const hasCount = originalText.match(/\(\d+\)$/);
 
         if (hasCount) {
-            // Už tam počet je, nahraď ho
+            // Count is already there, replace it
             originalText = originalText.replace(/\s*\(\d+\)$/, '');
         }
 
-        // Aktualizuj text s novým počtem
+        // Update text with new count
         tagsLink.textContent = `${originalText} (${count})`;
 
-        // Pokud je počet 0, nastav červenou barvu a tučné písmo
+        // If count is 0, set red color and bold font
         if (count === 0) {
             tagsLink.style.color = 'red';
             tagsLink.style.fontWeight = 'bold';
-            console.log(`Megapixel | PDP edit: Nastavena červená barva pro nulový počet štítků`);
+            console.log(`Megapixel | PDP edit: Set red color for zero tags count`);
         } else {
-            // Reset stylů pokud není nulový počet
+            // Reset styles if count is not zero
             tagsLink.style.color = '';
             tagsLink.style.fontWeight = '';
         }
 
-        console.log(`Megapixel | PDP edit: Úspěšně přidán počet štítků do navigace: ${originalText} (${count})`);
+        console.log(`Megapixel | PDP edit: Successfully added tags count to navigation: ${originalText} (${count})`);
 
     } catch (error) {
-        console.error('Megapixel | PDP edit: Chyba při načítání počtu štítků:', error);
+        console.error('Megapixel | PDP edit: Error loading tags count:', error);
     }
 }
 
+// Helper function for safe element selection
+function safeQuerySelector(selector) {
+    try {
+        return document.querySelector(selector);
+    } catch (error) {
+        console.error(`Megapixel | PDP edit: Error selecting element "${selector}":`, error);
+        return null;
+    }
+}
+
+// Execute the function when DOM is ready
+function initializeScript() {
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', addTagsCountToNavigation);
+    } else {
+        addTagsCountToNavigation();
+    }
+}
+
+// Initialize the script
+initializeScript();
 //************************** VLOŽENÍ ŠTÍTKŮ JAKO EMBEDDED ELEMENT ***************************
 
 /**
